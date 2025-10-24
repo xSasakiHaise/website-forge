@@ -1,0 +1,229 @@
+/* ================================
+   Dark Forge Base (site-wide)
+   Restores warm tones + dark mode
+   + BG animation fixes (always on)
+   ================================ */
+
+:root{
+  --forge-bg:#0d0a0a;
+  --forge-text:#fff6f0;
+  --forge-muted:#d8c7bf;
+  --forge-accent:#ff4d3b;
+  --forge-accent-2:#ff8a3a;
+
+  /* optional tuning knobs */
+  --forge-smoke-opacity:.38;
+  --forge-ember-opacity:.90;
+}
+
+html, body{
+  background:
+    radial-gradient(1400px 700px at 15% 0%, rgba(255,77,59,.06), transparent 60%),
+    var(--forge-bg) !important;
+  color: var(--forge-text) !important;
+}
+
+/* Let the body background show through theme wrappers */
+.site, #page, #content, .site-content, main, .wp-site-blocks{
+  background: transparent !important;
+  color: inherit !important;
+}
+
+/* Keep content above smoke/embers layers */
+body > *:not(.forge-bg-smoke):not(.forge-ember-field){
+  position: relative; z-index: 1;
+}
+
+/* Readable text defaults */
+p, li, span, .entry-content{ color: var(--forge-text); }
+.forge-sub, .has-secondary-color, .has-subtle-color{ color: var(--forge-muted) !important; }
+
+a{ color: var(--forge-accent); text-decoration: none; }
+a:hover{ color: var(--forge-accent-2); }
+
+/* Inputs inherit palette too */
+input, select, textarea{
+  color: var(--forge-text);
+  background: rgba(0,0,0,.6);
+  border-color: rgba(255,255,255,.12);
+}
+
+/* ================================
+   Background animation (fixed)
+   ================================ */
+
+/* Position/stacking so layers never block UI */
+.forge-bg-smoke,
+.forge-ember-field{
+  position: fixed;      /* stick to viewport */
+  inset: 0;
+  pointer-events: none; /* never intercept clicks */
+  z-index: 0;           /* content sits above (z:1 in rule above) */
+}
+
+/* Smoke: slow warm drift */
+.forge-bg-smoke{
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(255,77,59,.08), transparent 60%),
+    radial-gradient(1200px 600px at 80% 110%, rgba(255,138,58,.06), transparent 60%);
+  opacity: var(--forge-smoke-opacity, .38);
+  animation: forge-smoke-drift 24s linear infinite;
+  will-change: transform;
+}
+
+/* Ember field can overflow outside viewport edges */
+.forge-ember-field{ overflow: visible; }
+
+/* Individual embers (plugin can set CSS vars per node) */
+.forge-ember{
+  position: absolute;
+  left: var(--ember-x, 50%);
+  bottom: -10vh;
+  width: 2px; height: 2px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,180,120,.95), rgba(255,120,48,0) 70%);
+  box-shadow: 0 0 12px rgba(255,120,48,.45), 0 0 24px rgba(255,120,48,.25);
+  opacity: var(--forge-ember-opacity, .90);
+  animation: forge-ember-rise var(--ember-speed, 10s) linear infinite;
+  animation-delay: var(--ember-delay, 0s);
+  will-change: transform, opacity;
+}
+
+/* Keyframes (re-added to guard against minifiers stripping them) */
+@keyframes forge-smoke-drift{
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(-2%, -1%, 0) scale(1.02); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes forge-ember-rise{
+  0%   { transform: translateY(0) translateX(0) scale(1);    opacity: 0; }
+  10%  { opacity: .95; }
+  90%  { opacity: .95; }
+  100% { transform: translateY(-110vh) translateX(12px) scale(.85); opacity: 0; }
+}
+
+/* ================================
+   Always animate (ignore Reduce Motion)
+   ================================ */
+
+/* If any other CSS tries to disable animation, override it */
+.forge-bg-smoke{ animation: forge-smoke-drift 24s linear infinite !important; }
+.forge-ember{ animation: forge-ember-rise var(--ember-speed, 10s) linear infinite !important; }
+
+/* Explicitly cancel “reduce motion” overrides anywhere */
+@media (prefers-reduced-motion: reduce){
+  .forge-bg-smoke{ animation: forge-smoke-drift 24s linear infinite !important; }
+  .forge-ember{ animation: forge-ember-rise var(--ember-speed, 10s) linear infinite !important; }
+}
+
+/* Optional: manual hard kill switch for debugging (remove if not needed) */
+/*
+body.hf-no-anim .forge-bg-smoke,
+body.hf-no-anim .forge-ember{ animation: none !important; }
+*/
+/* === Ember motion upgrade: rise + sway + flicker + per-ember size === */
+.forge-ember{
+  /* size + speeds come from CSS vars (set per ember inline) */
+  width: var(--ember-size, 2px);
+  height: var(--ember-size, 2px);
+  border-radius: 50%;
+  background: radial-gradient(circle,
+              rgba(255,184,120, .90) 0%,
+              rgba(255,120,48,  0) 60%);
+  box-shadow:
+    0 0 calc(var(--ember-size,2px) * 4) rgba(255,120,48,.35),
+    0 0 calc(var(--ember-size,2px) * 9) rgba(255,120,48,.18);
+
+  /* Three animations layered:
+     1) rise (vertical travel)
+     2) sway (gentle left-right)
+     3) flicker (opacity/brightness breathing) */
+  animation:
+    forge-ember-rise   var(--ember-speed, 12s) linear infinite,
+    forge-ember-sway   var(--ember-sway-speed, 3.2s) ease-in-out infinite alternate,
+    forge-ember-flicker var(--ember-flicker-speed, 1.6s) ease-in-out infinite;
+  animation-delay:
+    var(--ember-delay, 0s),
+    calc(var(--ember-delay,0s) * .5),
+    calc(var(--ember-delay,0s) * .3);
+  will-change: transform, opacity, filter;
+}
+
+/* Vertical travel */
+@keyframes forge-ember-rise{
+  0%   { transform: translateY(0); opacity: 0; }
+  8%   { opacity: .85; }
+  90%  { opacity: .9; }
+  100% { transform: translateY(-110vh); opacity: 0; }
+}
+
+/* Horizontal sway (amplitude via --ember-dx in px) */
+@keyframes forge-ember-sway{
+  0%   { transform: translateX(calc(var(--ember-dx, 8) * -1px)); }
+  100% { transform: translateX(calc(var(--ember-dx, 8) * 1px)); }
+}
+
+/* Flicker (brightness/opacity breathing) */
+@keyframes forge-ember-flicker{
+  0%   { filter: brightness(.95) saturate(.95); opacity: .85; }
+  50%  { filter: brightness(1.10) saturate(1.05); opacity: 1; }
+  100% { filter: brightness(.98)  saturate(1.00); opacity: .9; }
+}
+/* === Ember motion fix: split rise (outer) and sway/flicker (inner) === */
+
+/* OUTER: vertical travel only */
+.forge-ember{
+  position: absolute;
+  left: var(--ember-x, 50%);
+  bottom: -10vh;
+  animation: forge-ember-rise var(--ember-speed, 12s) linear infinite;
+  animation-delay: var(--ember-delay, 0s);
+  will-change: transform;
+}
+
+/* INNER: the glowing particle that sways + flickers */
+.forge-ember-sway{
+  width: var(--ember-size, 2px);
+  height: var(--ember-size, 2px);
+  border-radius: 50%;
+  background: radial-gradient(circle,
+              rgba(255,184,120, .90) 0%,
+              rgba(255,120,48,  0) 60%);
+  box-shadow:
+    0 0 calc(var(--ember-size,2px) * 4) rgba(255,120,48,.35),
+    0 0 calc(var(--ember-size,2px) * 9) rgba(255,120,48,.18);
+
+  /* lateral sway + flicker live here so they don't clobber rise */
+  animation:
+    forge-ember-sway    var(--ember-sway-speed, 3.2s) ease-in-out infinite alternate,
+    forge-ember-flicker var(--ember-flicker-speed, 1.6s) ease-in-out infinite;
+  animation-delay:
+    calc(var(--ember-delay,0s) * .5),
+    calc(var(--ember-delay,0s) * .3);
+  will-change: transform, opacity, filter;
+}
+
+/* Keyframes */
+@keyframes forge-ember-rise{
+  0%   { transform: translateY(0); opacity: 0; }
+  8%   { opacity: .85; }
+  90%  { opacity: .9; }
+  100% { transform: translateY(-110vh); opacity: 0; }
+}
+
+@keyframes forge-ember-sway{
+  0%   { transform: translateX(calc(var(--ember-dx, 8) * -1px)); }
+  100% { transform: translateX(calc(var(--ember-dx, 8) *  1px)); }
+}
+
+@keyframes forge-ember-flicker{
+  0%   { filter: brightness(.95) saturate(.95); opacity: .85; }
+  50%  { filter: brightness(1.10) saturate(1.05); opacity: 1; }
+  100% { filter: brightness(.98)  saturate(1.00); opacity: .9; }
+}
+/* Make the dropdown appear a touch lower and keep pointer over the gap */
+.dropdown{ top:100%; margin-top:8px; }
+.forge-menu > li > div[aria-hidden],
+.dropdown > li > div[aria-hidden]{
+  pointer-events:auto;            /* so moving across the gap keeps it open */
+  height:16px !important;         /* slightly taller bridge */
+}
