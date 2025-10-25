@@ -8,6 +8,37 @@
 
 if (!defined('ABSPATH')) exit;
 
+function hfh_body_class(array $classes){
+  if (is_page('privacy-policy')) {
+    $classes[] = 'forge-privacy-page';
+  }
+  return $classes;
+}
+add_filter('body_class', 'hfh_body_class');
+
+function hfh_wrap_privacy_content($content){
+  if (!is_page('privacy-policy')) return $content;
+  if (strpos($content, 'forge-privacy-wrap') !== false) return $content;
+  return '<div class="forge-privacy-wrap"><div class="forge-privacy-inner">' . $content . '</div></div>';
+}
+add_filter('the_content', 'hfh_wrap_privacy_content', 20);
+
+function hfh_privacy_styles(){
+  if (!is_page('privacy-policy')) return;
+  ?>
+  <style>
+    .forge-privacy-wrap{max-width:960px;margin:0 auto;padding:60px 24px 80px;}
+    .forge-privacy-inner{background:rgba(12,10,9,.82);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:40px;box-shadow:0 18px 60px rgba(0,0,0,.45)}
+    .forge-privacy-inner h1,.forge-privacy-inner h2,.forge-privacy-inner h3{color:#ffe9d6;letter-spacing:.4px}
+    .forge-privacy-inner p,.forge-privacy-inner li{color:#f0e2cf;font-size:1.05rem;line-height:1.65}
+    .forge-privacy-inner a{color:#ff944d;text-decoration:none;border-bottom:1px dashed currentColor}
+    .forge-privacy-inner a:hover{filter:brightness(1.1)}
+    @media(max-width:782px){.forge-privacy-inner{padding:26px}.forge-privacy-wrap{padding:40px 16px}}
+  </style>
+  <?php
+}
+add_action('wp_head', 'hfh_privacy_styles');
+
 add_action('wp_body_open', function () {
 
   // --- styles (includes mobile tweaks + duplicate suppression) ---
@@ -23,18 +54,20 @@ add_action('wp_body_open', function () {
 
     /* ===================== CORE LAYOUT ===================== */
     .forge-nav { position: relative; z-index: 9000; background: transparent; isolation: isolate; }
-    .forge-nav .bar { max-width: 1200px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 18px; }
+    .forge-nav .bar { max-width: 1240px; margin: 0 auto; padding: 10px 18px; display: flex; align-items: center; gap: 20px; }
 
     /* ===================== BRAND GLOW ===================== */
-    .forge-brand{
-      font-weight: 900; font-size: 22px; letter-spacing: .25px; text-decoration: none;
+    .forge-brand{ display:flex; align-items:center; gap:12px; text-decoration:none; font-weight:700; color:#f5f2ec; }
+    .forge-brand-logo{ width:46px; height:46px; object-fit:contain; border-radius:12px; box-shadow:0 12px 28px rgba(0,0,0,.45); background:rgba(0,0,0,.35); padding:6px; }
+    .forge-brand-text{
+      font-weight:900; font-size:22px; letter-spacing:.25px;
       background: linear-gradient(90deg,#ff3d2e 0%,#ff5a22 25%,#ff7a1e 50%,#ff9c35 75%,#ffb347 100%);
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-      text-shadow: 0 0 12px rgba(255,60,20,.25), 0 0 24px rgba(255,100,40,.18), 0 0 48px rgba(255,120,48,.12);
+      -webkit-background-clip:text; background-clip:text; color:transparent;
+      text-shadow:0 0 12px rgba(255,60,20,.25),0 0 24px rgba(255,100,40,.18),0 0 48px rgba(255,120,48,.12);
       transition: filter .3s ease, text-shadow .3s ease;
     }
-    .forge-brand:hover{ filter:brightness(1.15);
-      text-shadow: 0 0 18px rgba(255,80,20,.35), 0 0 36px rgba(255,120,40,.25), 0 0 64px rgba(255,150,60,.20);
+    .forge-brand:hover .forge-brand-text{ filter:brightness(1.15);
+      text-shadow:0 0 18px rgba(255,80,20,.35),0 0 36px rgba(255,120,40,.25),0 0 64px rgba(255,150,60,.20);
     }
 
     /* ===================== MENU CORE ===================== */
@@ -61,6 +94,10 @@ add_action('wp_body_open', function () {
     .dropdown a:hover{ background:rgba(255,255,255,.07); }
     .dropdown li{ position:relative; list-style:none; }
     .dropdown .dropdown{ left:100%; top:0; margin-left:8px; }
+    .dropdown.dropdown--list{ max-height:65vh; overflow:auto; }
+    .dropdown.dropdown--hellas{ display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:4px; }
+    .dropdown.dropdown--hellas>li:first-child{ grid-column:1/-1; }
+    .dropdown.dropdown--hellas a{ white-space:normal; }
 
     @media (hover:hover){
       .forge-menu>li:hover>.dropdown,
@@ -110,79 +147,141 @@ add_action('wp_body_open', function () {
   </style>
 
   <?php
+  $default_modules = function_exists('hfpm_default_suite_modules')
+    ? hfpm_default_suite_modules()
+    : [
+        'hellasaudio'       => 'HellasAudio',
+        'hellasbattlebuddy' => 'HellasBattlebuddy',
+        'hellascontrol'     => 'HellasControl',
+        'hellasdeck'        => 'HellasDeck',
+        'hellaselo'         => 'HellasElo',
+        'hellasforms'       => 'HellasForms',
+        'hellasgardens'     => 'HellasGardens',
+        'hellashelper'      => 'HellasHelper',
+        'hellaslibrary'     => 'HellasLibrary',
+        'hellasmineralogy'  => 'HellasMineralogy',
+        'hellaspatcher'     => 'HellasPatcher',
+        'hellastextures'    => 'HellasTextures',
+        'hellaswilds'       => 'HellasWilds',
+      ];
+
+  $hellas_projects = [];
+  foreach ($default_modules as $slug => $label) {
+    $hellas_projects[] = [
+      'label' => $label,
+      'url'   => home_url('/projects/' . $slug . '/'),
+    ];
+  }
+
+  $other_projects = [];
+
+  if (function_exists('hfpm_projects_registry')) {
+    $registry = hfpm_projects_registry(['include_private' => false]);
+    $generated_hellas = [];
+    $generated_other  = [];
+    foreach ($registry as $slug => $row) {
+      $status = $row['status'] ?? 'available';
+      if ($status === 'private') continue;
+      $label = $row['title'] ?? $slug;
+      $side  = strtolower(trim((string)($row['side'] ?? '')));
+      $url   = home_url('/projects/' . $slug . '/');
+      if (in_array($side, ['other','external'], true)) {
+        $generated_other[] = ['label'=>$label, 'url'=>$url];
+      } else {
+        $generated_hellas[] = ['label'=>$label, 'url'=>$url];
+      }
+    }
+    if ($generated_hellas) {
+      $hellas_projects = $generated_hellas;
+    }
+    if ($generated_other) {
+      $other_projects = $generated_other;
+    }
+  }
+
+  $site_name = get_bloginfo('name');
+  if (!$site_name) $site_name = 'Hephaestus Forge';
+  $logo_html = '';
+  if (function_exists('get_theme_mod')) {
+    $logo_id = get_theme_mod('custom_logo');
+    if ($logo_id) {
+      $logo_src = wp_get_attachment_image_src($logo_id, 'medium');
+      if ($logo_src) {
+        $logo_html = '<img class="forge-brand-logo" src="' . esc_url($logo_src[0]) . '" alt="' . esc_attr($site_name) . '">';
+      }
+    }
+  }
+
   // --- HTML NAV (your baseline, with “Overview” -> /projects/) ---
   ?>
   <nav class="forge-nav" aria-label="Primary">
     <div class="bar">
-      <a href="/" class="forge-brand">Hephaestus Forge</a>
+      <a href="<?php echo esc_url(home_url('/')); ?>" class="forge-brand">
+        <?php echo $logo_html; ?>
+        <span class="forge-brand-text"><?php echo esc_html($site_name); ?></span>
+      </a>
 
       <ul id="forgeMenu" class="forge-menu">
-        <li><a class="forge-link" href="/">Home</a></li>
+        <li><a class="forge-link" href="<?php echo esc_url(home_url('/')); ?>">Home</a></li>
 
         <li style="position:relative">
           <button class="dd-btn" aria-expanded="false">Projects <span class="caret">▾</span></button>
           <div aria-hidden="true" style="position:absolute;left:0;right:0;top:100%;height:12px;"></div>
-          <ul class="dropdown">
+          <ul class="dropdown dropdown--list">
             <li style="position:relative">
               <button class="sub-dd-btn" aria-expanded="false">Hellas Projects <span class="caret">▸</span></button>
               <div aria-hidden="true" style="position:absolute;top:-6px;bottom:-6px;right:-14px;width:14px;"></div>
-              <ul class="dropdown">
+              <ul class="dropdown dropdown--hellas dropdown--list">
                 <div aria-hidden="true" style="position:absolute;top:-6px;bottom:-6px;left:-10px;width:10px;"></div>
-                <li><a href="/projects/">Overview</a></li>
-                <li><a href="/projects/hellasaudio/">HellasAudio</a></li>
-                <li><a href="/projects/hellasbattlebuddy/">HellasBattlebuddy</a></li>
-                <li><a href="/projects/hellascontrol/">HellasControl</a></li>
-                <li><a href="/projects/hellasdeck/">HellasDeck</a></li>
-                <li><a href="/projects/hellaselo/">HellasElo</a></li>
-                <li><a href="/projects/hellasforms/">HellasForms</a></li>
-                <li><a href="/projects/hellasgardens/">HellasGardens</a></li>
-                <li><a href="/projects/hellashelper/">HellasHelper</a></li>
-                <li><a href="/projects/hellasmineralogy/">HellasMineralogy</a></li>
-                <li><a href="/projects/hellaspatcher/">HellasPatcher</a></li>
-                <li><a href="/projects/hellastextures/">HellasTextures</a></li>
+                <li><a href="<?php echo esc_url(home_url('/projects/')); ?>">Overview</a></li>
+                <?php foreach ($hellas_projects as $proj): ?>
+                  <li><a href="<?php echo esc_url($proj['url']); ?>"><?php echo esc_html($proj['label']); ?></a></li>
+                <?php endforeach; ?>
               </ul>
             </li>
 
-            <li style="position:relative">
-              <button class="sub-dd-btn" aria-expanded="false">Our Other Projects <span class="caret">▸</span></button>
-              <div aria-hidden="true" style="position:absolute;top:-6px;bottom:-6px;right:-14px;width:14px;"></div>
-              <ul class="dropdown">
-                <div aria-hidden="true" style="position:absolute;top:-6px;bottom:-6px;left:-10px;width:10px;"></div>
-                <li><a href="/projects/other/placeholder-1/">Unnamed Project 1</a></li>
-                <li><a href="/projects/other/placeholder-2/">Unnamed Project 2</a></li>
-                <li><a href="/projects/other/placeholder-3/">Unnamed Project 3</a></li>
-              </ul>
-            </li>
+            <?php if (!empty($other_projects)): ?>
+              <li style="position:relative">
+                <button class="sub-dd-btn" aria-expanded="false">Our Other Projects <span class="caret">▸</span></button>
+                <div aria-hidden="true" style="position:absolute;top:-6px;bottom:-6px;right:-14px;width:14px;"></div>
+                <ul class="dropdown dropdown--list">
+                  <div aria-hidden="true" style="position:absolute;top:-6px;bottom:-6px;left:-10px;width:10px;"></div>
+                  <?php foreach ($other_projects as $proj): ?>
+                    <li><a href="<?php echo esc_url($proj['url']); ?>"><?php echo esc_html($proj['label']); ?></a></li>
+                  <?php endforeach; ?>
+                </ul>
+              </li>
+            <?php endif; ?>
           </ul>
         </li>
 
         <li style="position:relative">
           <button class="dd-btn" aria-expanded="false">License <span class="caret">▾</span></button>
           <div aria-hidden="true" style="position:absolute;left:0;right:0;top:100%;height:12px;"></div>
-          <ul class="dropdown">
-            <li><a href="/license/">My License</a></li>
-            <li><a href="/license/downloads/">Downloads</a></li>
+          <ul class="dropdown dropdown--list">
+            <li><a href="<?php echo esc_url(home_url('/license/')); ?>">My License</a></li>
+            <li><a href="<?php echo esc_url(home_url('/license/downloads/')); ?>">Downloads</a></li>
           </ul>
         </li>
 
         <li style="position:relative">
           <button class="dd-btn" aria-expanded="false">About <span class="caret">▾</span></button>
           <div aria-hidden="true" style="position:absolute;left:0;right:0;top:100%;height:12px;"></div>
-          <ul class="dropdown">
-            <li><a href="/about/">About the Forge</a></li>
-            <li><a href="/legal/">Legal</a></li>
-            <li><a href="/privacy-policy/">Privacy Policy</a></li>
-            <li><a href="/terms/">Terms</a></li>
+          <ul class="dropdown dropdown--list">
+            <li><a href="<?php echo esc_url(home_url('/about/')); ?>">About the Forge</a></li>
+            <li><a href="<?php echo esc_url(home_url('/legal/')); ?>">Legal</a></li>
+            <li><a href="<?php echo esc_url(home_url('/privacy-policy/')); ?>">Privacy Policy</a></li>
+            <li><a href="<?php echo esc_url(home_url('/terms/')); ?>">Terms</a></li>
           </ul>
         </li>
 
         <li style="position:relative">
           <button class="dd-btn" aria-expanded="false">Staff <span class="caret">▾</span></button>
           <div aria-hidden="true" style="position:absolute;left:0;right:0;top:100%;height:12px;"></div>
-          <ul class="dropdown">
-            <li><a href="/staff/">Staff Info</a></li>
-            <li><a href="/staff/login/">Staff Login</a></li>
-            <li><a class="requires-login" href="/staff/tickets/">Staff Tickets</a></li>
+          <ul class="dropdown dropdown--list">
+            <li><a href="<?php echo esc_url(home_url('/staff/')); ?>">Staff Info</a></li>
+            <li><a href="<?php echo esc_url(home_url('/staff/login/')); ?>">Staff Login</a></li>
+            <li><a class="requires-login" href="<?php echo esc_url(home_url('/staff/tickets/')); ?>">Staff Tickets</a></li>
           </ul>
         </li>
       </ul>
@@ -233,8 +332,11 @@ add_action('wp_body_open', function () {
     document.addEventListener('DOMContentLoaded', function(){
       const navs = document.querySelectorAll('.forge-nav');
       for (let i=1;i<navs.length;i++){ navs[i].remove(); }
-      const logos = document.querySelectorAll('.logo-fixed');
-      for (let i=1;i<logos.length;i++){ logos[i].remove(); }
+      document.querySelectorAll('.logo-fixed, .custom-logo-link').forEach(function(node){
+        if (!node.closest('.forge-nav')) {
+          node.remove();
+        }
+      });
     });
   })();
   </script>

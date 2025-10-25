@@ -116,11 +116,45 @@ function forge_tickets_current_staff() {
 }
 
 function forge_tickets_suites() {
-    return [
-        'HellasAudio','HellasBattlebuddy','HellasControl','HellasDeck','HellasElo',
-        'HellasForms','HellasGardens','HellasHelper','HellasMineralogy','HellasPatcher',
-        'HellasTextures','Other'
-    ];
+    $labels = [];
+    if (function_exists('hfpm_projects_labels')) {
+        $labels = array_values(hfpm_projects_labels());
+    } elseif (function_exists('hfpm_get_projects_option')) {
+        foreach (hfpm_get_projects_option() as $row) {
+            $title = trim((string)($row['title'] ?? ''));
+            if ($title !== '') {
+                $labels[] = $title;
+            }
+        }
+    }
+
+    if (empty($labels)) {
+        $defaults = function_exists('hfpm_default_suite_modules')
+            ? hfpm_default_suite_modules()
+            : [
+                'hellasaudio'       => 'HellasAudio',
+                'hellasbattlebuddy' => 'HellasBattlebuddy',
+                'hellascontrol'     => 'HellasControl',
+                'hellasdeck'        => 'HellasDeck',
+                'hellaselo'         => 'HellasElo',
+                'hellasforms'       => 'HellasForms',
+                'hellasgardens'     => 'HellasGardens',
+                'hellashelper'      => 'HellasHelper',
+                'hellaslibrary'     => 'HellasLibrary',
+                'hellasmineralogy'  => 'HellasMineralogy',
+                'hellaspatcher'     => 'HellasPatcher',
+                'hellastextures'    => 'HellasTextures',
+                'hellaswilds'       => 'HellasWilds',
+            ];
+        $labels = array_values($defaults);
+    }
+
+    $labels = array_values(array_unique($labels));
+    sort($labels, SORT_NATURAL | SORT_FLAG_CASE);
+    if (!in_array('Other', $labels, true)) {
+        $labels[] = 'Other';
+    }
+    return $labels;
 }
 function forge_tickets_statuses() {
     // Added "rejected"
