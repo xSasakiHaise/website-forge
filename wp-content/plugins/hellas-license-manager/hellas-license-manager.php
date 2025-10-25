@@ -17,22 +17,10 @@ class Hellas_License_Manager {
     const NONCE_KEY = '_hellas_nonce';
 
     /**
-     * Canonical module slugs => UI labels (A→Z by label)
-     * These match the downloads plugin keys exactly.
+     * Canonical module slugs => UI labels populated from project metadata.
      */
-    private $modules = [
-        'hellasaudio'       => 'HellasAudio',
-        'hellasbattlebuddy' => 'HellasBattlebuddy',
-        'hellascontrol'     => 'HellasControl',
-        'hellasdeck'        => 'HellasDeck',
-        'hellaselo'         => 'HellasElo',
-        'hellasforms'       => 'HellasForms',
-        'hellasgarden'      => 'HellasGardens',
-        'hellashelper'      => 'HellasHelper',
-        'hellasmineralogy'  => 'HellasMineralogy',
-        'hellaspatcher'     => 'HellasPatcher',
-        'hellastextures'    => 'HellasTextures',
-    ];
+    private $modules_cache = null;
+    private $modules_fallback = [];
 
     /**
      * Legacy short names → canonical slugs (for seamless migration).
@@ -42,19 +30,37 @@ class Hellas_License_Manager {
         'deck'       => 'hellasdeck',
         'elo'        => 'hellaselo',
         'forms'      => 'hellasforms',
-        'garden'     => 'hellasgarden',
+        'garden'     => 'hellasgardens',
+        'gardens'    => 'hellasgardens',
         'helper'     => 'hellashelper',
+        'library'    => 'hellaslibrary',
         'mineralogy' => 'hellasmineralogy',
         'patcher'    => 'hellaspatcher',
         // (older installs never had these, but included for completeness)
         'battlebuddy'=> 'hellasbattlebuddy',
         'control'    => 'hellascontrol',
         'textures'   => 'hellastextures',
+        'wilds'      => 'hellaswilds',
     ];
 
     public function __construct() {
-        // Sort by label for consistent UI
-        asort($this->modules, SORT_NATURAL | SORT_FLAG_CASE);
+        $this->modules_fallback = function_exists('hfpm_default_suite_modules')
+            ? hfpm_default_suite_modules()
+            : [
+                'hellasaudio'       => 'HellasAudio',
+                'hellasbattlebuddy' => 'HellasBattlebuddy',
+                'hellascontrol'     => 'HellasControl',
+                'hellasdeck'        => 'HellasDeck',
+                'hellaselo'         => 'HellasElo',
+                'hellasforms'       => 'HellasForms',
+                'hellasgardens'     => 'HellasGardens',
+                'hellashelper'      => 'HellasHelper',
+                'hellaslibrary'     => 'HellasLibrary',
+                'hellasmineralogy'  => 'HellasMineralogy',
+                'hellaspatcher'     => 'HellasPatcher',
+                'hellastextures'    => 'HellasTextures',
+                'hellaswilds'       => 'HellasWilds',
+            ];
 
         add_action('admin_menu',    [$this, 'menu']);
         add_action('admin_init',    [$this, 'ensure_table']); // idempotent
@@ -63,6 +69,62 @@ class Hellas_License_Manager {
 
     /** Resolve full table name with prefix */
     private function table() { global $wpdb; return $wpdb->prefix . self::TABLE; }
+
+    /** Retrieve modules map (slug => label) sourced from Projects Meta when available. */
+    private function modules() {
+        if (is_array($this->modules_cache)) {
+            return $this->modules_cache;
+        }
+
+        $modules = [];
+        if (function_exists('hfpm_projects_labels')) {
+            $modules = hfpm_projects_labels();
+        } elseif (function_exists('hfpm_get_projects_option')) {
+            foreach (hfpm_get_projects_option() as $row) {
+                $title = trim((string)($row['title'] ?? ''));
+                if ($title === '') {
+                    continue;
+                }
+                $slug = sanitize_title($row['slug'] ?? $title);
+                if ($slug === '') {
+                    continue;
+                }
+                $modules[$slug] = $title;
+            }
+        }
+
+        if (!$modules) {
+            $modules = $this->modules_fallback;
+        }
+
+        if ($modules) {
+            asort($modules, SORT_NATURAL | SORT_FLAG_CASE);
+        }
+
+        $this->modules_cache = $modules;
+        return $this->modules_cache;
+    }
+
+    /** Render a responsive checklist of module choices. */
+    private function render_module_checkboxes($input_name, array $selected = [], $id = '') {
+        $modules = $this->modules();
+        if (!$modules) {
+            return '<p><em>No Hellas projects available.</em></p>';
+        }
+
+        $selected = array_values(array_unique($selected));
+        $id_attr = $id !== '' ? ' id="' . esc_attr($id) . '"' : '';
+        $html = '<div class="hellas-modules-grid"' . $id_attr . '>';
+        foreach ($modules as $slug => $label) {
+            $checked = in_array($slug, $selected, true) ? ' checked' : '';
+            $html .= '<label class="hellas-modules-grid__item">'
+                . '<input type="checkbox" name="' . esc_attr($input_name) . '" value="' . esc_attr($slug) . '"' . $checked . '>'
+                . '<span>' . esc_html($label) . '</span>'
+                . '</label>';
+        }
+        $html .= '</div>';
+        return $html;
+    }
 
     /** Check if a column exists */
     private function column_exists($table, $col) {
@@ -123,6 +185,14 @@ class Hellas_License_Manager {
             'dashicons-lock',
             58
         );
+
+        do_action('hellas_suite_register_menu', [[
+            'title'      => 'License Manager',
+            'menu_title' => 'Licenses',
+            'cap'        => 'manage_options',
+            'slug'       => 'hf_suite_licenses',
+            'target'     => 'admin.php?page=' . self::MENU_SLUG,
+        ]]);
     }
 
     /** Nonce helpers */
@@ -135,17 +205,18 @@ class Hellas_License_Manager {
     private function normalize_entitlements($value) : array {
         $list = is_array($value) ? $value : explode(',', (string)$value);
         $out  = [];
+        $modules = $this->modules();
         foreach ($list as $raw) {
             $k = trim((string)$raw);
             if ($k === '') continue;
             // map legacy to canonical
             if (isset($this->legacy_map[$k])) $k = $this->legacy_map[$k];
-            if (isset($this->modules[$k])) $out[] = $k;
+            if (isset($modules[$k])) $out[] = $k;
         }
         // unique & sorted by label
         $out = array_values(array_unique($out));
-        usort($out, function($a,$b){
-            return strcasecmp($this->modules[$a], $this->modules[$b]);
+        usort($out, function($a,$b) use ($modules){
+            return strcasecmp($modules[$a], $modules[$b]);
         });
         return $out;
     }
@@ -256,6 +327,12 @@ class Hellas_License_Manager {
         }
 
         echo '<div class="wrap"><h1>Hellas Licenses</h1>';
+        echo '<style>
+          .hellas-modules-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin:10px 0;}
+          .hellas-modules-grid__item{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.04);padding:8px 10px;border-radius:10px;line-height:1.2;}
+          .hellas-modules-grid__item input{margin:0;}
+          .hellas-modules-grid__item span{font-weight:600;}
+        </style>';
         if ($notice) echo '<div class="updated"><p>'.$notice.'</p></div>';
         echo '<p><em>Found '.intval(count($rows)).' license(s) in <code>'.esc_html($table).'</code>.</em></p>';
 
@@ -268,12 +345,9 @@ class Hellas_License_Manager {
           <input name="customer_name" class="regular-text" placeholder="e.g. My Server Owner"></label></p>
           <p><label><strong>License Key</strong> (leave empty to auto-generate)<br>
           <input name="license_key" class="regular-text" placeholder="HF-XXXX..."></label></p>
-          <p><strong>Entitlements</strong><br>';
-        foreach ($this->modules as $slug => $label) {
-            echo '<label style="margin-right:12px"><input type="checkbox" name="modules[]" value="'.esc_attr($slug).'"> '.esc_html($label).'</label>';
-        }
-        echo '</p>
-          <p><label><strong>Days Valid</strong> <input type="number" name="days" value="365" min="1" max="3650"></label></p>
+          <p><strong>Entitlements</strong></p>';
+        echo $this->render_module_checkboxes('modules[]');
+        echo '  <p><label><strong>Days Valid</strong> <input type="number" name="days" value="365" min="1" max="3650"></label></p>
           '.submit_button('Issue / Update License', 'primary', '', false).'
         </form><hr>';
 
@@ -306,12 +380,7 @@ class Hellas_License_Manager {
                           <input type="text" name="row_name" value="'.esc_attr($r->customer_name).'" placeholder="Name" style="width:220px">
                           <input type="datetime-local" name="row_expires" value="'.esc_attr($r->expires_at ? gmdate('Y-m-d\TH:i:s', strtotime($r->expires_at.' UTC')) : '').'" style="margin-left:6px">
                         </div>';
-                foreach ($this->modules as $slug => $label) {
-                    $checked = in_array($slug, $existing, true) ? 'checked' : '';
-                    echo '<label style="margin-right:10px;white-space:nowrap">
-                            <input type="checkbox" name="row_modules[]" value="'.esc_attr($slug).'" '.$checked.'> '.esc_html($label).'
-                          </label>';
-                }
+                echo $this->render_module_checkboxes('row_modules[]', $existing, 'modules-' . intval($r->id));
                 echo '  <button class="button button-primary" style="margin-left:6px">Save</button>
                     </form>
                   </td>

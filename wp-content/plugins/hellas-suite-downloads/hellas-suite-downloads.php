@@ -19,25 +19,31 @@ final class Hellas_Suite_Downloads {
   const TOKEN_TTL      = 300;   // 5 minutes
   const ENTITLE_TTL    = 300;   // 5 minutes
 
-  // Canonical module keys used across the site
-  private $modules = [
-    'hellasaudio'       => 'HellasAudio',
-    'hellasbattlebuddy' => 'HellasBattlebuddy',
-    'hellascontrol'     => 'HellasControl',
-    'hellasdeck'        => 'HellasDeck',
-    'hellaselo'         => 'HellasElo',
-    'hellasforms'       => 'HellasForms',
-    'hellasgarden'      => 'HellasGardens',
-    'hellashelper'      => 'HellasHelper',
-    'hellasmineralogy'  => 'HellasMineralogy',
-    'hellaspatcher'     => 'HellasPatcher',
-    'hellastextures'    => 'HellasTextures',
-  ];
+  // Canonical module keys used across the site (populated from meta helper)
+  private $modules_cache = null;
+  private $modules_fallback = [];
 
   private $pagehook = '';
 
   public function __construct(){
-    asort($this->modules, SORT_NATURAL | SORT_FLAG_CASE);
+    $this->modules_fallback = function_exists('hfpm_default_suite_modules')
+      ? hfpm_default_suite_modules()
+      : [
+          'hellasaudio'       => 'HellasAudio',
+          'hellasbattlebuddy' => 'HellasBattlebuddy',
+          'hellascontrol'     => 'HellasControl',
+          'hellasdeck'        => 'HellasDeck',
+          'hellaselo'         => 'HellasElo',
+          'hellasforms'       => 'HellasForms',
+          'hellasgardens'     => 'HellasGardens',
+          'hellashelper'      => 'HellasHelper',
+          'hellaslibrary'     => 'HellasLibrary',
+          'hellasmineralogy'  => 'HellasMineralogy',
+          'hellaspatcher'     => 'HellasPatcher',
+          'hellastextures'    => 'HellasTextures',
+          'hellaswilds'       => 'HellasWilds',
+        ];
+
     add_action('admin_menu', [$this,'admin_menu']);
     add_action('admin_post_hellas_dl_save', [$this,'handle_save']);
 
@@ -76,6 +82,14 @@ final class Hellas_Suite_Downloads {
     if ($this->pagehook){
       add_action('load-'.$this->pagehook, [$this,'admin_assets']);
     }
+
+    do_action('hellas_suite_register_menu', [[
+      'title'      => 'Downloads',
+      'menu_title' => 'Downloads',
+      'cap'        => 'manage_options',
+      'slug'       => 'hf_suite_downloads',
+      'target'     => 'admin.php?page=' . self::PAGE_SLUG,
+    ]]);
   }
 
   public function admin_assets(){
@@ -99,6 +113,36 @@ final class Hellas_Suite_Downloads {
   private function verifier_url(){
     $u = trim((string) get_option(self::OPT_VERIFIER, home_url('/wp-json/hellas/v1/license/verify')));
     return $u ?: home_url('/wp-json/hellas/v1/license/verify');
+  }
+
+  private function modules(){
+    if (is_array($this->modules_cache)) return $this->modules_cache;
+
+    $modules = [];
+    if (function_exists('hfpm_projects_labels')) {
+      $modules = hfpm_projects_labels(['include_private' => false]);
+    } elseif (function_exists('hfpm_get_projects_option')) {
+      foreach (hfpm_get_projects_option() as $row) {
+        $title = trim((string)($row['title'] ?? ''));
+        if ($title === '') continue;
+        $slug = sanitize_title($row['slug'] ?? $title);
+        if ($slug === '') continue;
+        $status = sanitize_text_field($row['status'] ?? 'available');
+        if ($status === 'private') continue;
+        $modules[$slug] = $title;
+      }
+    }
+
+    if (!$modules) {
+      $modules = $this->modules_fallback;
+    }
+
+    if ($modules) {
+      asort($modules, SORT_NATURAL | SORT_FLAG_CASE);
+    }
+
+    $this->modules_cache = $modules;
+    return $this->modules_cache;
   }
 
   private function scan_files($dir){
@@ -172,7 +216,7 @@ final class Hellas_Suite_Downloads {
         <table class="widefat fixed striped hellas-table">
           <thead><tr><th style="width:220px;">Module</th><th>File (relative to base)</th><th style="width:260px;">Picker</th></tr></thead>
           <tbody>
-          <?php foreach ($this->modules as $key=>$label):
+          <?php $modules = $this->modules(); foreach ($modules as $key=>$label):
             $rel = isset($map[$key]) ? (string)$map[$key] : '';
             $choices = array_unique(array_merge(
               $this->scan_files('/'.$key),
@@ -222,7 +266,8 @@ final class Hellas_Suite_Downloads {
 
     $incoming = isset($_POST[self::OPT_MAP]) && is_array($_POST[self::OPT_MAP]) ? $_POST[self::OPT_MAP] : [];
     $out = [];
-    foreach ($this->modules as $key=>$label){
+    $modules = $this->modules();
+    foreach ($modules as $key=>$label){
       $rel = isset($incoming[$key]) ? trim((string)wp_unslash($incoming[$key])) : '';
       $rel = ltrim($rel, '/');
       if ($rel !== '') $out[$key] = $rel;
@@ -303,13 +348,15 @@ final class Hellas_Suite_Downloads {
     $ver = $this->call_verifier($licenseId, $machineId);
     if (!$ver['valid']) return [];
 
+    $modules = $this->modules();
+
     // If verifier explicitly lists modules/entitlements, enforce it.
     if (is_array($ver['modules']) && $ver['modules']) {
-      $allowed = array_intersect(array_keys($this->modules), $ver['modules']);
+      $allowed = array_intersect(array_keys($modules), $ver['modules']);
       return array_values($allowed);
     }
     // Fallback: valid but no explicit modules => allow all known modules
-    return array_keys($this->modules);
+    return array_keys($modules);
   }
 
   private function resolve_file($module){
@@ -335,6 +382,7 @@ final class Hellas_Suite_Downloads {
     if ($licenseId === '') return new WP_REST_Response(['modules'=>[], 'count'=>0], 200);
 
     $allowed = $this->entitled_modules($licenseId, $machineId);
+    $modules = $this->modules();
     $base = $this->base_dir();
     $realBase = realpath($base);
     $map  = get_option(self::OPT_MAP, []);
@@ -348,7 +396,7 @@ final class Hellas_Suite_Downloads {
       if ($realBase && $realAbs && is_file($realAbs) && strpos($realAbs, $realBase)===0){
         $list[] = [
           'id'    => $key,
-          'name'  => $this->modules[$key],
+          'name'  => $modules[$key] ?? $key,
           'path'  => $rel,
           'size'  => @filesize($realAbs) ?: 0,
           'mtime' => @filemtime($realAbs) ?: 0,
